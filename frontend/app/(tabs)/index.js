@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Text, View, StyleSheet, Button, Dimensions } from 'react-native';
+import { Text, View, StyleSheet, Button, TouchableOpacity, Dimensions } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import Svg, { Line, Circle } from 'react-native-svg';
 
@@ -9,7 +9,7 @@ export default function App() {
   
   // --- CONFIGURATION ---
   const CAPTURE_ENABLED = true; 
-  const SERVER_URL = "ws://172.26.60.115:8000/ws/analyze"; 
+  const SERVER_URL = "ws://172.26.50.62:8000/ws/analyze"; 
   
   // ADJUST THIS VALUE TO CHANGE SPEED (in milliseconds)
   const CAPTURE_INTERVAL_MS = 50; 
@@ -118,7 +118,26 @@ export default function App() {
     );
   };
 
-  if (!permission?.granted) return <Button onPress={requestPermission} title="Grant Permission" />;
+  if (!permission?.granted) {
+  return (
+    <View style={styles.permissionContainer}>
+      {/* This empty View with flex: 1 acts as a spacer, pushing everything below it down */}
+      <View style={{ flex: 1 }} /> 
+      
+      <View style={styles.buttonWrapper}>
+        <Text style={styles.permissionText}>
+          Vantage needs camera access to analyze your form.
+        </Text>
+        <TouchableOpacity 
+          style={styles.permissionButton} 
+          onPress={requestPermission}
+        >
+          <Text style={styles.permissionButtonText}>Grant Permission</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+  }
 
   return (
     <View style={styles.container}>
@@ -147,6 +166,34 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
+  permissionContainer: {
+    flex: 1,
+    backgroundColor: '#000', // Matches the gym app aesthetic
+    padding: 20,
+  },
+  buttonWrapper: {
+    marginBottom: 50, // Keeps it away from the bottom edge/home bar
+    alignItems: 'center',
+  },
+  permissionText: {
+    color: '#ccc',
+    textAlign: 'center',
+    marginBottom: 20,
+    fontSize: 16,
+  },
+  permissionButton: {
+    backgroundColor: '#007AFF', // Standard iOS Blue
+    paddingVertical: 15,
+    paddingHorizontal: 40,
+    borderRadius: 12,
+    width: '100%',
+    alignItems: 'center',
+  },
+  permissionButtonText: {
+    color: '#white',
+    fontSize: 18,
+    fontWeight: '600',
+  },
   container: { flex: 1, backgroundColor: '#000' },
   overlayLayer: { ...StyleSheet.absoluteFillObject, zIndex: 10 }, 
   uiLayer: { flex: 1, justifyContent: 'space-between', zIndex: 20 },
