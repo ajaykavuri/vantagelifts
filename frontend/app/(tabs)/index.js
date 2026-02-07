@@ -12,7 +12,7 @@ export default function App() {
   const SERVER_URL = "ws://172.26.50.62:8000/ws/analyze"; 
   
   // ADJUST THIS VALUE TO CHANGE SPEED (in milliseconds)
-  const CAPTURE_INTERVAL_MS = 50; 
+  const CAPTURE_INTERVAL_MS = 20; 
   // ---------------------
 
   const [feedback, setFeedback] = useState({ 
