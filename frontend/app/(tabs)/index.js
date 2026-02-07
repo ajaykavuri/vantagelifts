@@ -9,37 +9,25 @@ export default function App() {
   const [ws, setWs] = useState(null);
   
   // --- CONFIGURATION ---
-  // CHANGE THIS TO YOUR LAPTOP'S LOCAL IP
   const CAPTURE_ENABLED = true; 
-  const SERVER_URL = "ws://172.26.50.62:8000/ws/analyze"; 
+  // REPLACE WITH YOUR IP
+  const SERVER_URL = "ws://172.26.60.115:8000/ws/analyze"; 
   const CAPTURE_INTERVAL_MS = 50; 
   // ---------------------
 
-  // APP STATES
   const [viewMode, setViewMode] = useState("menu"); 
   const [exercise, setExercise] = useState(null);
-  const [isRecording, setIsRecording] = useState(false);
   const [cameraFacing, setCameraFacing] = useState('front'); 
-
-  // DATA STATES
   const [workoutLog, setWorkoutLog] = useState([]); 
   const [repHistory, setRepHistory] = useState([]); 
   const [feedback, setFeedback] = useState({ 
-    state: "Searching", 
-    reps: 0, 
-    velocity: 0,
-    rir: 5,
-    feedback: "Looking for lifter...",
-    keypoints: null 
+    state: "Searching", reps: 0, velocity: 0, rir: 5, feedback: "Looking for lifter...", keypoints: null 
   });
-
   const [isCameraReady, setIsCameraReady] = useState(false);
   const cameraRef = useRef(null);
   const processingRef = useRef(false);
-
   const { width, height } = Dimensions.get('window');
 
-  // Helper: Convert Normalized Coords (0-1) to Screen Pixels
   const toScreen = (pt) => {
     if (!pt) return { x: 0, y: 0 };
     return { x: pt[0] * width, y: pt[1] * height };
@@ -48,68 +36,38 @@ export default function App() {
   useEffect(() => {
     let socket = null;
     let intervalId = null;
-
-    const cleanup = () => {
-      if (socket) socket.close();
-      if (intervalId) clearInterval(intervalId);
-    };
+    const cleanup = () => { if (socket) socket.close(); if (intervalId) clearInterval(intervalId); };
 
     if (viewMode === 'recording') {
       socket = new WebSocket(SERVER_URL);
       socket.onopen = () => setWs(socket);
-      
       socket.onmessage = (e) => {
         try {
           const data = JSON.parse(e.data);
           setFeedback(data);
           processingRef.current = false; 
-
           if (data.reps > repHistory.length) {
             setRepHistory(prev => [...prev, { rep: data.reps, vel: data.velocity, rir: data.rir }]);
           }
-        } catch (err) {
-          processingRef.current = false;
-        }
+        } catch (err) { processingRef.current = false; }
       };
-
       socket.onclose = () => setWs(null);
-
       intervalId = setInterval(() => {
-        if (CAPTURE_ENABLED && socket && socket.readyState === 1) {
-          captureAndSend(socket);
-        }
+        if (CAPTURE_ENABLED && socket && socket.readyState === 1) captureAndSend(socket);
       }, CAPTURE_INTERVAL_MS); 
-    } else {
-      if (ws) ws.close();
-      setWs(null);
-    }
-
+    } else { if (ws) ws.close(); setWs(null); }
     return cleanup;
   }, [viewMode]); 
 
   const captureAndSend = async (currentSocket) => {
     if (!cameraRef.current || processingRef.current) return;
     processingRef.current = true;
-
     try {
-      const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.3, 
-        base64: true,
-        skipProcessing: true, 
-      });
-
+      const photo = await cameraRef.current.takePictureAsync({ quality: 0.3, base64: true, skipProcessing: true });
       if (currentSocket.readyState === 1) {
-        const payload = JSON.stringify({
-          image: photo.base64,
-          exercise: exercise
-        });
-        currentSocket.send(payload);
-      } else {
-        processingRef.current = false;
-      }
-    } catch (error) {
-      processingRef.current = false;
-    }
+        currentSocket.send(JSON.stringify({ image: photo.base64, exercise: exercise }));
+      } else { processingRef.current = false; }
+    } catch (error) { processingRef.current = false; }
   };
 
   const startSet = (type) => {
@@ -117,32 +75,25 @@ export default function App() {
     setRepHistory([]);
     setFeedback({ state: "Searching", reps: 0, velocity: 0, rir: 5, feedback: "Looking for lifter...", keypoints: null});
     setViewMode('recording');
-    setIsRecording(true);
   };
 
   const finishSet = () => {
-    const completedSet = {
-      exercise: exercise,
-      totalReps: feedback.reps,
-      finalRIR: feedback.rir,
-      details: repHistory
-    };
-    setWorkoutLog([...workoutLog, completedSet]);
+    setWorkoutLog([...workoutLog, { exercise, totalReps: feedback.reps, finalRIR: feedback.rir, details: repHistory }]);
     setViewMode('set_summary');
-    setIsRecording(false);
   };
 
-  const toggleCamera = () => {
-    setCameraFacing(current => (current === 'front' ? 'back' : 'front'));
-  };
+  const toggleCamera = () => setCameraFacing(current => (current === 'front' ? 'back' : 'front'));
 
+  // --- FULL BODY SKELETON RENDERER ---
   const renderSkeleton = () => {
     if (!feedback.keypoints) return null;
     
     const { 
-        shoulder_l, elbow_l, wrist_l,
-        shoulder_r, elbow_r, wrist_r,
-        hip_l, hip_r
+        shoulder_l, elbow_l, wrist_l, 
+        shoulder_r, elbow_r, wrist_r, 
+        hip_l, hip_r, 
+        knee_l, knee_r, 
+        ankle_l, ankle_r 
     } = feedback.keypoints;
 
     const lineProps = { stroke: "#00FF00", strokeWidth: "6" };
@@ -162,23 +113,45 @@ export default function App() {
 
     return (
         <Svg height="100%" width="100%" style={StyleSheet.absoluteFill}>
-            {drawLine(shoulder_l, elbow_l)}
+            {/* Upper Body */}
+            {drawLine(shoulder_l, elbow_l)} 
             {drawLine(elbow_l, wrist_l)}
-            {drawLine(shoulder_r, elbow_r)}
+            {drawLine(shoulder_r, elbow_r)} 
             {drawLine(elbow_r, wrist_r)}
+            
+            {/* Torso */}
             {drawLine(shoulder_l, shoulder_r)}
-            {drawLine(shoulder_l, hip_l)}     
-            {drawLine(shoulder_r, hip_r)}     
-            {drawLine(hip_l, hip_r)}          
+            {drawLine(shoulder_l, hip_l)} 
+            {drawLine(shoulder_r, hip_r)}
+            {drawLine(hip_l, hip_r)}
 
+            {/* Legs */}
+            {drawLine(hip_l, knee_l)} 
+            {drawLine(knee_l, ankle_l)}
+            {drawLine(hip_r, knee_r)} 
+            {drawLine(knee_r, ankle_r)}
+
+            {/* Joints */}
             {drawJoint(shoulder_l)}
             {drawJoint(shoulder_r)}
             {drawJoint(elbow_l)}
             {drawJoint(elbow_r)}
             {drawJoint(wrist_l)}
             {drawJoint(wrist_r)}
+            {drawJoint(hip_l)}
+            {drawJoint(hip_r)}
+            {drawJoint(knee_l)}
+            {drawJoint(knee_r)}
+            {drawJoint(ankle_l)}
+            {drawJoint(ankle_r)}
         </Svg>
     );
+  };
+
+  const getDisplayText = () => {
+    if (feedback.feedback === "Looking for lifter...") return "Looking for lifter...";
+    if (feedback.feedback === "Show Wrists!") return "Show Wrists!";
+    return "GO GO GO!!";
   };
 
   if (!permission?.granted) {
@@ -187,23 +160,20 @@ export default function App() {
             <View style={{ flex: 1 }} /> 
             <View style={styles.buttonWrapper}>
                 <Text style={styles.permissionText}>Vantage needs camera access.</Text>
-                <TouchableOpacity style={styles.permissionButton} onPress={requestPermission}>
-                    <Text style={styles.permissionButtonText}>Grant Permission</Text>
-                </TouchableOpacity>
+                <TouchableOpacity style={styles.permissionButton} onPress={requestPermission}><Text style={styles.permissionButtonText}>Grant Permission</Text></TouchableOpacity>
             </View>
         </View>
     );
   }
 
-  // --- MENU SCREEN ---
+  // --- MENU ---
   if (viewMode === 'menu') {
     return (
         <View style={styles.menuContainer}>
             <Text style={styles.title}>Vantage</Text>
-            <Text style={styles.subtitle}>Select Exercise</Text>
-            
+            <Text style={styles.subtitle}>Select Workout</Text>
             <ScrollView contentContainerStyle={styles.gridContainer}>
-                {/* ROW 1 */}
+                {/* Upper Body */}
                 <View style={styles.gridRow}>
                     <TouchableOpacity style={styles.gridBtn} onPress={() => startSet('curl')}>
                         <Text style={styles.gridEmoji}>💪</Text>
@@ -214,8 +184,7 @@ export default function App() {
                         <Text style={styles.gridText}>Bench</Text>
                     </TouchableOpacity>
                 </View>
-
-                {/* ROW 2 */}
+                {/* Lower Body */}
                 <View style={styles.gridRow}>
                     <TouchableOpacity style={styles.gridBtn} onPress={() => startSet('squat')}>
                         <Text style={styles.gridEmoji}>🦵</Text>
@@ -226,16 +195,15 @@ export default function App() {
                         <Text style={styles.gridText}>Deadlift</Text>
                     </TouchableOpacity>
                 </View>
-
-                {/* ROW 3 */}
-                <View style={styles.gridRow}>
+                 {/* Extras */}
+                 <View style={styles.gridRow}>
                     <TouchableOpacity style={styles.gridBtn} onPress={() => startSet('press')}>
                         <Text style={styles.gridEmoji}>👐</Text>
-                        <Text style={styles.gridText}>OH Press</Text>
+                        <Text style={styles.gridText}>Press</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.gridBtn} onPress={() => startSet('row')}>
-                        <Text style={styles.gridEmoji}>🚣</Text>
-                        <Text style={styles.gridText}>Row</Text>
+                    <TouchableOpacity style={styles.gridBtn} onPress={() => startSet('lunge')}>
+                        <Text style={styles.gridEmoji}>🏃</Text>
+                        <Text style={styles.gridText}>Lunge</Text>
                     </TouchableOpacity>
                 </View>
             </ScrollView>
@@ -243,82 +211,52 @@ export default function App() {
     );
   }
 
-  // --- SET SUMMARY ---
+  // --- SUMMARY SCREENS ---
   if (viewMode === 'set_summary') {
     return (
         <View style={styles.summaryContainer}>
             <Text style={styles.summaryTitle}>Set Complete!</Text>
             <Text style={styles.statBig}>{feedback.reps} Reps</Text>
-            
-            <View style={styles.statRow}>
-                <Text style={styles.statLabel}>Reps in Reserve (RIR):</Text>
-                <Text style={styles.statValue}>{feedback.rir}</Text>
-            </View>
-
-            <TouchableOpacity style={styles.btn} onPress={() => setViewMode('menu')}>
-                <Text style={styles.btnText}>Next Set</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity style={[styles.btn, {marginTop: 20, backgroundColor: '#333'}]} onPress={() => setViewMode('workout_summary')}>
-                <Text style={styles.btnText}>Finish Workout</Text>
-            </TouchableOpacity>
+            <View style={styles.statRow}><Text style={styles.statLabel}>RIR:</Text><Text style={styles.statValue}>{feedback.rir}</Text></View>
+            <TouchableOpacity style={styles.btn} onPress={() => setViewMode('menu')}><Text style={styles.btnText}>Next Set</Text></TouchableOpacity>
+            <TouchableOpacity style={[styles.btn, {marginTop: 20, backgroundColor: '#333'}]} onPress={() => setViewMode('workout_summary')}><Text style={styles.btnText}>Finish Workout</Text></TouchableOpacity>
         </View>
     );
   }
-
-  // --- WORKOUT SUMMARY ---
   if (viewMode === 'workout_summary') {
     return (
-      <ScrollView style = {{flex:1, backgroundColor:'black', padding:20}}>
-        <Text style = {styles.summaryTitle}>Workout Complete</Text>
+      <ScrollView style = {{flex:1, backgroundColor:'black', paddingTop: 80, paddingHorizontal: 20}}>
+        <Text style = {styles.summaryTitle}>Workout Log</Text>
         {workoutLog.map((set, i) => (
           <View key={i} style={styles.historyRow}>
-              <View>
-                  <Text style={{color:'white', fontWeight:'bold', fontSize:18}}>Set {i+1}: {set.exercise.toUpperCase()}</Text>
-                  <Text style={{color:'gray'}}>Reps: {set.totalReps}</Text>
-              </View>
-              <View style={{alignItems:'flex-end'}}>
-                  <Text style={{color:'#4CD964', fontSize:24, fontWeight:'bold'}}>{set.finalRIR} RIR</Text>
-              </View>
+              <View><Text style={{color:'white', fontWeight:'bold', fontSize:18}}>{set.exercise.toUpperCase()}</Text><Text style={{color:'gray'}}>Reps: {set.totalReps}</Text></View>
+              <View><Text style={{color:'#4CD964', fontSize:24, fontWeight:'bold'}}>{set.finalRIR} RIR</Text></View>
             </View>
         ))}
-        <TouchableOpacity style={[styles.btn, {marginTop: 40}]} onPress={() => {setWorkoutLog([]); setViewMode('menu');}}>
-            <Text style={styles.btnText}>Start New Workout</Text>
-        </TouchableOpacity>
+        <TouchableOpacity style={[styles.btn, {marginTop: 40}]} onPress={() => {setWorkoutLog([]); setViewMode('menu');}}><Text style={styles.btnText}>New Workout</Text></TouchableOpacity>
       </ScrollView>
     )
   }
 
-  // --- RECORDING SCREEN ---
+  // --- RECORDING ---
   return (
     <View style={styles.container}>
-      <CameraView 
-        style={StyleSheet.absoluteFillObject} 
-        ref={cameraRef} 
-        facing={cameraFacing}
-        onCameraReady={() => setIsCameraReady(true)}
-      />
-      
+      <CameraView style={StyleSheet.absoluteFillObject} ref={cameraRef} facing={cameraFacing} onCameraReady={() => setIsCameraReady(true)} />
       <View style={styles.overlayLayer}>{renderSkeleton()}</View>
-
       <View style={styles.uiLayer}>
         <View style={styles.topBar}>
-          <Text style = {styles.liveText}>🔴 LIVE | {exercise?.toUpperCase()}</Text>
-          <TouchableOpacity style={styles.flipBtn} onPress={toggleCamera}>
-            <Ionicons name="camera-reverse" size={28} color="white" />
-          </TouchableOpacity>
+          <Text style = {styles.liveText}>🔴 {exercise?.toUpperCase()}</Text>
+          <TouchableOpacity style={styles.flipBtn} onPress={toggleCamera}><Ionicons name="camera-reverse" size={28} color="white" /></TouchableOpacity>
         </View>
-
         <View style={styles.centerFeedback}>
-            <Text style={styles.largeText}>{feedback.feedback || "Analyzing..."}</Text>
-            <Text style={styles.subText}>Vel: {feedback.velocity?.toFixed(2)}</Text>
+            <Text style={styles.largeText}>{getDisplayText()}</Text>
+            {getDisplayText() === "GO GO GO!!" && (
+                <Text style={styles.subText}>Vel: {feedback.velocity?.toFixed(2)}</Text>
+            )}
         </View>
-
         <View style={styles.bottomBar}>
           <Text style={styles.repText}>REPS: {feedback.reps}</Text>
-          <TouchableOpacity style={styles.stopBtn} onPress = {finishSet}>
-            <Text style={styles.stopBtnText}>Finish Set</Text>
-          </TouchableOpacity>
+          <TouchableOpacity style={styles.stopBtn} onPress = {finishSet}><Text style={styles.stopBtnText}>Finish Set</Text></TouchableOpacity>
           <View style={[styles.statusDot, { backgroundColor: ws ? '#4CAF50' : '#F44336' }]} />
         </View>
       </View>
@@ -332,31 +270,17 @@ const styles = StyleSheet.create({
   permissionText: { color: '#ccc', textAlign: 'center', marginBottom: 20, fontSize: 16 },
   permissionButton: { backgroundColor: '#007AFF', paddingVertical: 15, paddingHorizontal: 40, borderRadius: 12, width: '100%', alignItems: 'center' },
   permissionButtonText: { color: 'white', fontSize: 18, fontWeight: '600' },
-  
   container: { flex: 1, backgroundColor: '#000' },
   overlayLayer: { ...StyleSheet.absoluteFillObject, zIndex: 10 }, 
   uiLayer: { flex: 1, justifyContent: 'space-between', zIndex: 20, paddingVertical: 50, paddingHorizontal: 20 },
-  
-  // Menu Styles
   menuContainer: { flex: 1, backgroundColor: '#121212', paddingTop: 60, paddingHorizontal: 20 },
   title: { fontSize: 40, color: 'white', fontWeight: 'bold', marginBottom: 10, textAlign: 'center' },
   subtitle: { fontSize : 20, color: 'gray', marginBottom: 30, textAlign: 'center' },
-  
   gridContainer: { paddingBottom: 50 },
   gridRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 },
-  gridBtn: { 
-      backgroundColor: '#333', 
-      width: '48%', 
-      aspectRatio: 1, // Makes it a square
-      borderRadius: 20, 
-      justifyContent: 'center', 
-      alignItems: 'center',
-      padding: 10
-  },
+  gridBtn: { backgroundColor: '#333', width: '48%', aspectRatio: 1, borderRadius: 20, justifyContent: 'center', alignItems: 'center', padding: 10 },
   gridEmoji: { fontSize: 50, marginBottom: 10 },
   gridText: { color: 'white', fontSize: 20, fontWeight: 'bold', textAlign: 'center' },
-  
-  // Recording UI Styles
   topBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%' },
   liveText: { color: 'red', fontWeight: 'bold', fontSize: 16 },
   flipBtn: { backgroundColor: 'rgba(0,0,0,0.5)', padding: 10, borderRadius: 20 },
@@ -368,8 +292,6 @@ const styles = StyleSheet.create({
   statusDot: { width: 12, height: 12, borderRadius: 6, marginTop: 10 },
   stopBtn: { backgroundColor: '#FF3B30', paddingVertical: 15, paddingHorizontal: 60, borderRadius: 30, marginTop: 10 },
   stopBtnText: { color: 'white', fontSize: 20, fontWeight: '900' },
-
-  // Summary Styles
   summaryContainer: { flex: 1, backgroundColor: '#000', padding: 40, justifyContent: 'center' },
   summaryTitle: { fontSize: 32, color: 'white', fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
   statBig: { fontSize: 60, color: '#4CD964', fontWeight: 'bold', textAlign: 'center', marginBottom: 30 },

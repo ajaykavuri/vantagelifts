@@ -34,31 +34,38 @@ class SessionManager:
         self.frames_since_detection = 0
     
     def calculate_rir(self):
-        """Estimate Reps in Reserve based on Velocity Loss"""
-        # DEBUG: Print the raw history
-        print(f"   [RIR DEBUG] History: {self.rep_velocities}")
+        """Estimate Reps in Reserve using a Linear Function"""
+        if not self.rep_velocities:
+            return 8 # Assume fresh start
 
-        if len(self.rep_velocities) < 2: 
-            print("   [RIR DEBUG] Not enough reps (Need 2+)")
-            return 5
-        
-        first = self.rep_velocities[0]
+        # 1. Baseline: Average of all reps so far
+        baseline = np.mean(self.rep_velocities)
         last = self.rep_velocities[-1]
         
-        if first == 0: return 5
+        if baseline == 0: return 8
         
-        # Calculate Percentage Loss
-        loss = (first - last) / first
-        loss_pct = loss * 100
+        # 2. Calculate Loss (0.0 to 1.0)
+        loss = (baseline - last) / baseline
         
-        print(f"   [RIR DEBUG] First: {first:.2f} | Last: {last:.2f} | Loss: {loss_pct:.1f}%")
+        # 3. Linear Mapping
+        # Formula: RIR = 8 - (13.3 * Loss)
+        # This maps 0% loss -> 8 RIR
+        # This maps 60% loss -> 0 RIR
+        estimated_rir = 8 - (13.3 * loss)
+        
+        # 4. Clamp & Round
+        # Ensure it stays between 0 and 8, and is an integer
+        final_rir = int(round(max(0, min(8, estimated_rir))))
+        
+        # Debug Output
+        print(f"   [RIR DEBUG] Avg: {baseline:.2f} | Last: {last:.2f} | Loss: {loss*100:.1f}% | RIR: {final_rir}")
 
-        if loss > 0.40: return 0   # >40% loss = Failure
-        if loss > 0.25: return 1   # >25% loss = 1 left
-        if loss > 0.15: return 2   # >15% loss = 2 left
-        return 4                   # <15% loss = Easy
+        return final_rir
 
 session = SessionManager()
+
+# Define Lower Body Exercises
+LOWER_BODY_EXERCISES = ["squat", "deadlift", "lunge", "legs"]
 
 def clean_for_json(data):
     if isinstance(data, dict):
@@ -109,7 +116,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 "state": "Searching",
                 "reps": session.last_reps,
                 "velocity": 0.0,
-                "rir": 5, # Default
+                "rir": 8, # Default to 8 (Fresh)
                 "feedback": session.last_valid_feedback, 
                 "keypoints": None 
             }
@@ -123,22 +130,39 @@ async def websocket_endpoint(websocket: WebSocket):
                     conf = confs[0]
                     th = 0.05 
                     
-                    wrist_ys, elbow_ys, shoulder_ys = [], [], []
-
-                    if conf[9] > th: wrist_ys.append(kpts[9][1])
-                    if conf[10]> th: wrist_ys.append(kpts[10][1])
-                    if conf[7] > th: elbow_ys.append(kpts[7][1])
-                    if conf[8] > th: elbow_ys.append(kpts[8][1])
-                    if conf[5] > th: shoulder_ys.append(kpts[5][1])
-                    if conf[6] > th: shoulder_ys.append(kpts[6][1])
-
+                    is_lower_body = session.exercise_type in LOWER_BODY_EXERCISES
+                    
                     best_y = None
-                    if len(wrist_ys) > 0: best_y = np.mean(wrist_ys)
-                    elif len(elbow_ys) > 0: best_y = np.mean(elbow_ys)
-                    elif len(shoulder_ys) > 0: best_y = np.mean(shoulder_ys)
+                    tracking_source = "NONE"
+
+                    if is_lower_body:
+                        # LOWER BODY
+                        hip_ys, knee_ys = [], []
+                        if conf[11] > th: hip_ys.append(kpts[11][1]) 
+                        if conf[12] > th: hip_ys.append(kpts[12][1]) 
+                        if conf[13] > th: knee_ys.append(kpts[13][1]) 
+                        if conf[14] > th: knee_ys.append(kpts[14][1]) 
+
+                        if len(hip_ys) > 0: best_y = np.mean(hip_ys)
+                        elif len(knee_ys) > 0: best_y = np.mean(knee_ys)
+
+                    else:
+                        # UPPER BODY
+                        wrist_ys, elbow_ys, shoulder_ys = [], [], []
+                        if conf[9] > th: wrist_ys.append(kpts[9][1])
+                        if conf[10]> th: wrist_ys.append(kpts[10][1])
+                        if conf[7] > th: elbow_ys.append(kpts[7][1])
+                        if conf[8] > th: elbow_ys.append(kpts[8][1])
+                        if conf[5] > th: shoulder_ys.append(kpts[5][1])
+                        if conf[6] > th: shoulder_ys.append(kpts[6][1])
+
+                        if len(wrist_ys) > 0: best_y = np.mean(wrist_ys)
+                        elif len(elbow_ys) > 0: best_y = np.mean(elbow_ys)
+                        elif len(shoulder_ys) > 0: best_y = np.mean(shoulder_ys)
 
                     if best_y is not None:
                         session.frames_since_detection = 0
+                        
                         try:
                             stats = session.lifter.update(best_y)
                             if stats:
@@ -146,58 +170,47 @@ async def websocket_endpoint(websocket: WebSocket):
                                 raw_response['reps'] = stats['reps']
                                 raw_response['velocity'] = stats['velocity']
 
-                                # --- LOGIC: RECORD NEW REP ---
                                 if stats['reps'] > session.last_reps:
-                                    # Use the Peak Velocity captured during the rep
-                                    # For simplicity, we use the average velocity of the concentric phase
-                                    # or just the last instant velocity (which might be low at the top).
-                                    # Better approach: We use the 'rep_velocity' returned from mechanics
-                                    
                                     recorded_vel = stats['rep_velocity']
                                     print(f"\n>>> REP {stats['reps']} COMPLETED. Velocity: {recorded_vel:.2f}")
-                                    
                                     session.rep_velocities.append(recorded_vel)
                                     session.last_reps = stats['reps']
-                                    
-                                    # Calculate RIR now that we have a new rep
                                     raw_response["rir"] = session.calculate_rir()
                                 else:
-                                    # Keep sending previous RIR
                                     raw_response["rir"] = session.calculate_rir()
 
-                                # Feedback
                                 state = stats['state']
                                 if state == "DESCENDING": fb = "Control Negative"
                                 elif state == "ASCENDING": fb = "EXPLODE UP!"
                                 elif state == "TOP": fb = "Lockout"
                                 elif state == "BOTTOM": fb = "Drive!"
                                 else: fb = "Ready"
-                                
                                 raw_response['feedback'] = fb
                                 session.last_valid_feedback = fb
-
-                        except Exception as e:
-                            print(f"Mech Error: {e}")
-                    
+                        except Exception:
+                            pass
                     else:
                         session.frames_since_detection += 1
                         if session.frames_since_detection > 10: 
                             raw_response['feedback'] = "Looking for lifter..."
-                            session.last_valid_feedback = "Looking for lifter..."
-                    
-                    # Skeleton Drawing
+
                     overlay_data = {}
                     def norm(pt): return [pt[0]/img_w, pt[1]/img_h]
+                    
                     if conf[5] > th: overlay_data['shoulder_l'] = norm(kpts[5])
+                    if conf[6] > th: overlay_data['shoulder_r'] = norm(kpts[6])
                     if conf[7] > th: overlay_data['elbow_l'] = norm(kpts[7])
+                    if conf[8] > th: overlay_data['elbow_r'] = norm(kpts[8])
+                    if conf[11]> th: overlay_data['hip_l'] = norm(kpts[11])
+                    if conf[12]> th: overlay_data['hip_r'] = norm(kpts[12])
                     if conf[9] > th: overlay_data['wrist_l'] = norm(kpts[9])
                     elif conf[7] > th: overlay_data['wrist_l'] = norm(kpts[7]) 
-                    if conf[6] > th: overlay_data['shoulder_r'] = norm(kpts[6])
-                    if conf[8] > th: overlay_data['elbow_r'] = norm(kpts[8])
                     if conf[10]> th: overlay_data['wrist_r'] = norm(kpts[10])
                     elif conf[8] > th: overlay_data['wrist_r'] = norm(kpts[8]) 
-                    if conf[11] > th: overlay_data['hip_l'] = norm(kpts[11])
-                    if conf[12] > th: overlay_data['hip_r'] = norm(kpts[12])
+                    if conf[13] > th: overlay_data['knee_l'] = norm(kpts[13])
+                    if conf[14] > th: overlay_data['knee_r'] = norm(kpts[14])
+                    if conf[15] > th: overlay_data['ankle_l'] = norm(kpts[15])
+                    if conf[16] > th: overlay_data['ankle_r'] = norm(kpts[16])
 
                     if overlay_data:
                         raw_response['keypoints'] = overlay_data
