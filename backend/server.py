@@ -13,10 +13,7 @@ app = FastAPI()
 model = YOLO('yolo11n-pose.pt')
 
 def clean_for_json(data):
-    """
-    Recursively converts NumPy types to native Python types 
-    so JSON serialization doesn't crash the server.
-    """
+    """Recursively converts NumPy types to native Python types."""
     if isinstance(data, dict):
         return {k: clean_for_json(v) for k, v in data.items()}
     elif isinstance(data, list):
@@ -33,20 +30,17 @@ def clean_for_json(data):
 @app.websocket("/ws/analyze")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
-    print(">>> CLIENT CONNECTED")
+    print(">>> CLIENT CONNECTED: New Session Started")
     
     lifter = LifterState()
     
     try:
         while True:
-            # 2. Receive Base64 Image
             try:
                 data = await websocket.receive_text()
             except Exception:
-                # If receive fails, client likely disconnected
                 break
             
-            # Decode Logic
             try:
                 image_bytes = base64.b64decode(data)
                 np_arr = np.frombuffer(image_bytes, np.uint8)
@@ -58,69 +52,63 @@ async def websocket_endpoint(websocket: WebSocket):
             if frame is None:
                 continue
 
-            # 3. Run Inference
-            # verbose=False keeps terminal clean
+            # GET IMAGE DIMENSIONS FOR NORMALIZATION
+            # This is crucial for the skeleton to align on your phone
+            img_h, img_w, _ = frame.shape
+
             results = model(frame, verbose=False)
             
-            # Default response
             raw_response = {
                 "state": "Searching",
-                "reps": 0,
+                "reps": lifter.reps if hasattr(lifter, 'reps') else 0,
                 "velocity": 0.0,
-                "feedback": "Looking for lifter..."
+                "feedback": "Looking for lifter...",
+                "keypoints": None 
             }
 
-            # 4. Keypoint Extraction
             if results and results[0].keypoints is not None:
-                # .xy returns a nice (N, 17, 2) tensor of coordinates
-                # .conf returns (N, 17) tensor of confidence
-                # We move to CPU and numpy immediately
                 keypoints = results[0].keypoints.xy.cpu().numpy()
                 confs = results[0].keypoints.conf.cpu().numpy()
 
-                # Check if we have at least one person (Index 0)
                 if keypoints.shape[0] > 0:
-                    # Get the first person's data
-                    # shape is (17, 2) for kpts, (17,) for conf
                     kpts = keypoints[0]
                     conf = confs[0]
 
-                    # Validate we have enough points (COCO has 17)
                     if len(kpts) >= 11: 
-                        # COCO Indices: 9=Left Wrist, 10=Right Wrist
-                        l_wrist_conf = conf[9]
-                        r_wrist_conf = conf[10]
+                        # --- NORMALIZED GRAPHICS OVERLAY ---
+                        # We send x/width and y/height (0.0 to 1.0)
+                        overlay_data = {}
+                        
+                        # Lowered threshold to 0.3 so it shows up more easily
+                        if conf[5] > 0.3: 
+                            overlay_data['shoulder_l'] = [kpts[5][0] / img_w, kpts[5][1] / img_h]
+                        if conf[7] > 0.3: 
+                            overlay_data['elbow_l']    = [kpts[7][0] / img_w, kpts[7][1] / img_h]
+                        if conf[9] > 0.3: 
+                            overlay_data['wrist_l']    = [kpts[9][0] / img_w, kpts[9][1] / img_h]
+                        
+                        raw_response['keypoints'] = overlay_data
 
+                        # --- BIOMECHANICS ---
                         keypoints_dict = {}
-                        if l_wrist_conf > 0.4:
-                            keypoints_dict['wrist_l'] = kpts[9]
-                        if r_wrist_conf > 0.4:
-                            keypoints_dict['wrist_r'] = kpts[10]
+                        if conf[9] > 0.3: keypoints_dict['wrist_l'] = kpts[9]
+                        if conf[10] > 0.3: keypoints_dict['wrist_r'] = kpts[10]
 
                         if keypoints_dict:
-                            # 5. Update Mechanics
                             try:
                                 mechanics_feedback = lifter.update(keypoints_dict)
                                 if mechanics_feedback:
                                     raw_response.update(mechanics_feedback)
-                                    
-                                    # Logic to map state to UI text
-                                    state = raw_response.get('state', 'wait')
-                                    if state == "DESCENDING":
-                                        raw_response['feedback'] = "Control Negative"
-                                    elif state == "ASCENDING":
-                                        raw_response['feedback'] = "EXPLODE UP!"
-                                    elif state == "top":
-                                        raw_response['feedback'] = "Lockout"
-                                    else:
-                                        raw_response['feedback'] = "Ready"
-                            except Exception as mech_err:
-                                print(f"Mechanics Logic Error: {mech_err}")
+                                    state = raw_response.get('state', 'IDLE')
+                                    if state == "DESCENDING": raw_response['feedback'] = "Control Negative"
+                                    elif state == "ASCENDING": raw_response['feedback'] = "EXPLODE UP!"
+                                    elif state == "TOP": raw_response['feedback'] = "Lockout"
+                                    elif state == "BOTTOM": raw_response['feedback'] = "Drive!"
+                                    else: raw_response['feedback'] = "Ready"
+                            except Exception:
+                                pass
 
-            # 6. SANITIZE AND SEND
-            # This step is CRITICAL. It removes the NumPy types that crash the socket.
             safe_response = clean_for_json(raw_response)
-            
             await websocket.send_json(safe_response)
 
     except WebSocketDisconnect:
@@ -129,6 +117,4 @@ async def websocket_endpoint(websocket: WebSocket):
         print(f">>> CRITICAL SERVER ERROR: {e}")
 
 if __name__ == "__main__":
-    # Ensure uvicorn runs on 0.0.0.0 to be visible to the phone
     uvicorn.run(app, host="0.0.0.0", port=8000)
-

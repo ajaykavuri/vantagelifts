@@ -1,31 +1,38 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Text, View, StyleSheet, Button, Dimensions } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import Svg, { Line, Circle } from 'react-native-svg'; // Import SVG tools
+import Svg, { Line, Circle } from 'react-native-svg';
 
 export default function App() {
   const [permission, requestPermission] = useCameraPermissions();
   const [ws, setWs] = useState(null);
   
-  // We now store the full keypoint data, not just feedback
+  // --- CONFIGURATION ---
+  const CAPTURE_ENABLED = true; 
+  const SERVER_URL = "ws://172.26.60.115:8000/ws/analyze"; 
+  
+  // ADJUST THIS VALUE TO CHANGE SPEED (in milliseconds)
+  const CAPTURE_INTERVAL_MS = 50; 
+  // ---------------------
+
   const [feedback, setFeedback] = useState({ 
     state: "Searching", 
     reps: 0, 
     feedback: "Looking for lifter...",
-    keypoints: null // Expecting { wrist_l: [x,y], shoulder_l: [x,y], ... }
+    keypoints: null 
   });
   
   const [isCameraReady, setIsCameraReady] = useState(false);
   const cameraRef = useRef(null);
   const processingRef = useRef(false);
 
-  // --- CONFIGURATION ---
-  const CAPTURE_ENABLED = true; 
-  const SERVER_URL = "ws://172.26.60.115:8000/ws/analyze"; 
-  // ---------------------
-
-  // Screen dimensions for scaling normalized coordinates
   const { width, height } = Dimensions.get('window');
+
+  // Helper to convert Normalized Coords (0-1) to Screen Pixels
+  const toScreen = (pt) => {
+    if (!pt) return { x: 0, y: 0 };
+    return { x: pt[0] * width, y: pt[1] * height };
+  };
 
   useEffect(() => {
     let socket = null;
@@ -38,7 +45,6 @@ export default function App() {
 
     if (isCameraReady) {
       socket = new WebSocket(SERVER_URL);
-      
       socket.onopen = () => setWs(socket);
       
       socket.onmessage = (e) => {
@@ -53,15 +59,16 @@ export default function App() {
 
       socket.onclose = () => setWs(null);
 
+      // Uses the CAPTURE_INTERVAL_MS constant
       intervalId = setInterval(() => {
         if (CAPTURE_ENABLED && socket && socket.readyState === 1) {
           captureAndSend(socket);
         }
-      }, 500); // 500ms for balance
+      }, CAPTURE_INTERVAL_MS); 
     }
 
     return cleanup;
-  }, [isCameraReady]); 
+  }, [isCameraReady]); // Re-runs only if camera restarts
 
   const captureAndSend = async (currentSocket) => {
     if (!cameraRef.current || processingRef.current) return;
@@ -84,46 +91,31 @@ export default function App() {
     }
   };
 
-  // --- RENDERING THE SKELETON ---
   const renderSkeleton = () => {
     if (!feedback.keypoints) return null;
-
-    // Helper to scale generic coordinates (assuming 640x640 YOLO output)
-    // You might need to tweak these ratios based on your camera aspect ratio
-    const scaleX = width / 640; 
-    const scaleY = height / 640; 
-
     const { shoulder_l, elbow_l, wrist_l } = feedback.keypoints;
 
-    // Only draw if we have the full arm
-    if (shoulder_l && elbow_l && wrist_l) {
-        return (
-            <Svg height="100%" width="100%" style={StyleSheet.absoluteFill}>
-                {/* Upper Arm Line */}
+    return (
+        <Svg height="100%" width="100%" style={StyleSheet.absoluteFill}>
+            {shoulder_l && elbow_l && (
                 <Line
-                    x1={shoulder_l[0] * scaleX}
-                    y1={shoulder_l[1] * scaleY}
-                    x2={elbow_l[0] * scaleX}
-                    y2={elbow_l[1] * scaleY}
-                    stroke="#00FF00"
-                    strokeWidth="4"
+                    x1={toScreen(shoulder_l).x} y1={toScreen(shoulder_l).y}
+                    x2={toScreen(elbow_l).x}    y2={toScreen(elbow_l).y}
+                    stroke="#00FF00" strokeWidth="6"
                 />
-                {/* Forearm Line */}
+            )}
+            {elbow_l && wrist_l && (
                 <Line
-                    x1={elbow_l[0] * scaleX}
-                    y1={elbow_l[1] * scaleY}
-                    x2={wrist_l[0] * scaleX}
-                    y2={wrist_l[1] * scaleY}
-                    stroke="#00FF00"
-                    strokeWidth="4"
+                    x1={toScreen(elbow_l).x} y1={toScreen(elbow_l).y}
+                    x2={toScreen(wrist_l).x} y2={toScreen(wrist_l).y}
+                    stroke="#00FF00" strokeWidth="6"
                 />
-                {/* Joint Circles */}
-                <Circle cx={elbow_l[0] * scaleX} cy={elbow_l[1] * scaleY} r="8" fill="#FFD700" />
-                <Circle cx={wrist_l[0] * scaleX} cy={wrist_l[1] * scaleY} r="8" fill="#FFD700" />
-            </Svg>
-        );
-    }
-    return null;
+            )}
+            {shoulder_l && <Circle cx={toScreen(shoulder_l).x} cy={toScreen(shoulder_l).y} r="8" fill="#FFD700" />}
+            {elbow_l &&    <Circle cx={toScreen(elbow_l).x}    cy={toScreen(elbow_l).y}    r="8" fill="#FFD700" />}
+            {wrist_l &&    <Circle cx={toScreen(wrist_l).x}    cy={toScreen(wrist_l).y}    r="8" fill="#FFD700" />}
+        </Svg>
+    );
   };
 
   if (!permission?.granted) return <Button onPress={requestPermission} title="Grant Permission" />;
@@ -137,10 +129,7 @@ export default function App() {
         onCameraReady={() => setIsCameraReady(true)}
       />
       
-      {/* OVERLAY GRAPHICS */}
-      <View style={styles.overlayLayer}>
-          {renderSkeleton()}
-      </View>
+      <View style={styles.overlayLayer}>{renderSkeleton()}</View>
 
       <View style={styles.uiLayer}>
         <View style={styles.centerFeedback}>
@@ -159,9 +148,10 @@ export default function App() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
-  overlayLayer: { ...StyleSheet.absoluteFillObject, zIndex: 1 }, // Graphics go here
-  uiLayer: { flex: 1, justifyContent: 'space-between', zIndex: 2 }, // Text goes on top
-  centerFeedback: { alignItems: 'center', marginTop: 100, backgroundColor: 'rgba(0,0,0,0.3)', padding: 20, alignSelf: 'center', borderRadius: 10 },
+  overlayLayer: { ...StyleSheet.absoluteFillObject, zIndex: 10 }, 
+  uiLayer: { flex: 1, justifyContent: 'space-between', zIndex: 20 },
+  
+  centerFeedback: { alignItems: 'center', marginTop: 150, backgroundColor: 'rgba(0,0,0,0.3)', padding: 20, alignSelf: 'center', borderRadius: 10 },
   largeText: { fontSize: 32, color: 'white', fontWeight: 'bold' },
   subText: { fontSize: 18, color: '#FFD700' },
   bottomBar: { padding: 30, alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.7)' },
