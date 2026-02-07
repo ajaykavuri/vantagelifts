@@ -11,7 +11,7 @@ from mechanics import LifterState
 app = FastAPI()
 
 # 1. Load YOLOv11 Pose Model
-model = YOLO('yolo11n-pose.pt')
+model = YOLO('yolo26n-pose.pt')
 
 class SessionManager:
     def __init__(self):
@@ -142,16 +142,15 @@ async def websocket_endpoint(websocket: WebSocket):
                                 if stats:
                                     raw_response['state'] = stats['state']
                                     raw_response['reps'] = stats['reps']
-                                    raw_response['velocity'] = stats['velocity']
+                                    raw_response['velocity'] = stats['current_velocity']
 
                                     if stats['state'] == "ASCENDING":
                                         session.current_rep_peak_vel = max(session.current_rep_peak_vel, stats['velocity'])
                                     
                                     if stats['reps'] > session.last_reps:
-                                        if session.current_rep_peak_vel > 0:
-                                            session.rep_velocities.append(session.current_rep_peak_vel)
+                                        avg_vel = stats['rep_velocity']
+                                        session.rep_velocities.append(avg_vel)
                                         session.last_reps = stats['reps']
-                                        session.current_rep_peak_vel = 0 # reset for next rep
                                     
                                     raw_response["rir"] = session.calculate_rir()
 

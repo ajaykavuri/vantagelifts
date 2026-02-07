@@ -12,9 +12,9 @@ class LifterState:
         self.prev_time = None
         self.velocity_history = []
         
-        # Configuration Thresholds
-        self.VELOCITY_THRESHOLD = 0.15  # m/s (minimum speed to be considered moving)
-        self.REP_MIN_ROM = 50           # pixels (minimum movement to count as a rep)
+        self.concentric_samples = []
+        self.last_rep_velocity = 0.0
+
         self.start_y_position = None    # To track Range of Motion (ROM)
 
     def update(self, keypoints):
@@ -47,24 +47,20 @@ class LifterState:
         dt = current_time - self.prev_time
         if dt == 0: 
             return None
-            
         dy = current_y - self.prev_y
-        instant_velocity = -(dy / dt)  # Positive = Moving UP
-
-        # Smooth velocity (Simple Moving Average of last 3 frames)
-        self.velocity_history.append(instant_velocity)
-        if len(self.velocity_history) > 3:
-            self.velocity_history.pop(0)
+        if dt > 0:
+            inst_vel = dy / dt
+            self.velocity_history.append(inst_vel)
+            if len(self.velocity_history) > 3: self.velocity_history.pop(0)
+            self.velocity = np.mean(self.velocity_history)
         
-        # Normalize: Divide by roughly 500 to simulate meters/sec (assuming 500px ~ 1 meter)
-        # This is an approximation for visual feedback
-        self.velocity = np.mean(self.velocity_history) / 500.0 
+        display_velocity = self.velocity / 500.0
 
         # 3. State Machine Logic
         
         # DETECT DESCENDING (Eccentric)
         # We need significant negative velocity
-        if self.velocity < -0.05: 
+        if display_velocity < -0.05: 
             if self.state != "DESCENDING":
                 self.state = "DESCENDING"
                 # Track where the rep started (the top)
@@ -72,19 +68,21 @@ class LifterState:
 
         # DETECT ASCENDING (Concentric)
         # We need significant positive velocity
-        elif self.velocity > 0.05:
+        elif display_velocity > 0.05:
             if self.state != "ASCENDING":
                 self.state = "ASCENDING"
 
         # DETECT END OF REP (Top/Lockout)
         # If we were ascending, and now velocity is near zero
-        elif abs(self.velocity) < 0.05:
+        elif abs(display_velocity) < 0.05:
             if self.state == "ASCENDING":
                 # Check Range of Motion (ROM) to prevent jitter counting
                 # Did we move enough from the bottom?
                 # (Simple check: Just count it for now to fix your bug)
                 self.reps += 1
                 self.state = "TOP"
+                if self.concentric_samples:
+                    self.last_rep_velocity = 0.0
             elif self.state == "DESCENDING":
                 self.state = "BOTTOM"
             else:
@@ -97,5 +95,6 @@ class LifterState:
         return {
             "state": self.state,
             "reps": self.reps,
-            "velocity": float(self.velocity) * 10 # Scale up for readability on phone
+            "current_velocity": float(display_velocity),
+            "rep_velocity": float(self.last_rep_velocity)
         }

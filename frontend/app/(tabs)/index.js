@@ -17,11 +17,14 @@ export default function App() {
   // ---------------------
 
   // APP STATES
+  const [viewMode, setViewMode] = useState("menu"); // 'menu', 'recording', 'set_summary', 'workout_summary'
   const [exercise, setExercise] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
 
   // DATA STATES
+  const [workoutLog, setWorkoutLog] = useState([]); // Stores all completed sets
+  const [repHistory, setRepHistory] = useState([]); // Stores current set history
   const [feedback, setFeedback] = useState({ 
     state: "Searching", 
     reps: 0, 
@@ -30,7 +33,6 @@ export default function App() {
     feedback: "Looking for lifter...",
     keypoints: null 
   });
-  const [repHistory, setRepHistory] = useState([])
 
   const [isCameraReady, setIsCameraReady] = useState(false);
   const cameraRef = useRef(null);
@@ -53,7 +55,7 @@ export default function App() {
       if (intervalId) clearInterval(intervalId);
     };
 
-    if (isRecording) {
+    if (viewMode === 'recording') {
       socket = new WebSocket(SERVER_URL);
       socket.onopen = () => setWs(socket);
       
@@ -85,7 +87,7 @@ export default function App() {
     }
 
     return cleanup;
-  }, [isRecording]); // Re-runs only if camera restarts
+  }, [viewMode]); // Re-runs only if camera restarts
 
   const captureAndSend = async (currentSocket) => {
     if (!cameraRef.current || processingRef.current) return;
@@ -115,12 +117,26 @@ export default function App() {
     setExercise(type);
     setRepHistory([]);
     setFeedback({ state: "Searching", reps: 0, velocity: 0, rir: 5, feedback: "Looking for lifter...", keypoints: null});
+    setViewMode('recording');
     setIsRecording(true);
     setShowSummary(false);
   };
   const finishSet = () => {
+    // Save this set to the workout log
+    const completedSet = {
+      exercise: exercise,
+      totalReps: feedback.reps,
+      finalRIR: feedback.rir,
+      details: repHistory
+    };
+    setWorkoutLog([...workoutLog, completedSet]);
+    setViewMode('set_summary');
     setIsRecording(false);
     setShowSummary(true);
+  };
+
+  const finishWorkout = () => {
+    setViewMode('workout_summary');
   };
 
   const renderSkeleton = () => {
@@ -172,7 +188,7 @@ export default function App() {
   }
 
   // --- View 1: HOME MENU
-  if (!isRecording && !showSummary) {
+  if (viewMode === 'menu') {
     return (
         <View style={styles.menuContainer}>
             <Text style={styles.title}>Vantage</Text>
@@ -188,7 +204,7 @@ export default function App() {
         </View>
     );
   }
-  if (showSummary) {
+  if (viewMode === 'set_summary') {
     return (
         <View style={styles.summaryContainer}>
             <Text style={styles.summaryTitle}>Set Complete!</Text>
@@ -199,22 +215,35 @@ export default function App() {
                 <Text style={styles.statValue}>{feedback.rir}</Text>
             </View>
 
-            <ScrollView style={styles.historyList}>
-                <Text style={styles.historyHeader}>Velocity Breakdown:</Text>
-                {repHistory.map((item, index) => (
-                    <View key={index} style={styles.historyRow}>
-                        <Text style={styles.historyText}>Rep {item.rep}</Text>
-                        <Text style={styles.historyText}>{item.vel.toFixed(2)}</Text>
-                    </View>
-                ))}
-            </ScrollView>
-
-            <TouchableOpacity style={styles.btn} onPress={() => setShowSummary(false)}>
-                <Text style={styles.btnText}>Back to Home</Text>
+            <TouchableOpacity style={styles.btn} onPress={() => setViewMode('menu')}>
+                <Text style={styles.btnText}>Next Set</Text>
             </TouchableOpacity>
         </View>
     );
   }
+  if (viewMode === 'workout_summary') {
+    return (
+      <ScrollView style = {{flex:1, backgroundColor:'black', padding:20}}>
+        <Text style = {styles.summaryTitle}>Workout Complete</Text>
+
+        {workoutLog.map((set, i) => (
+          <View key={i} style={styles.historyRow}>
+              <View>
+                  <Text style={{color:'white', fontWeight:'bold', fontSize:18}}>Set {i+1}: {set.exercise.toUpperCase()}</Text>
+                  <Text style={{color:'gray'}}>Reps: {set.totalReps}</Text>
+              </View>
+              <View style={{alignItems:'flex-end'}}>
+                  <Text style={{color:'#4CD964', fontSize:24, fontWeight:'bold'}}>{set.finalRIR} RIR</Text>
+              </View>
+            </View>
+        ))}
+        <TouchableOpacity style={[styles.btn, {marginTop: 40}]} onPress={() => {setWorkoutLog([]); setViewMode('menu');}}>
+                <Text style={styles.btnText}>Start New Workout</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    )
+  }
+
   return (
     <View style={styles.container}>
       <CameraView 
