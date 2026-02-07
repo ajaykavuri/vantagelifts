@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Text, View, StyleSheet, TouchableOpacity } from 'react-native';
+import { Text, View, StyleSheet, TouchableOpacity, Button } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 
 export default function App() {
@@ -8,6 +8,8 @@ export default function App() {
   const [feedback, setFeedback] = useState({ angle: 0, reps: 0, feedback: "Ready" });
   const cameraRef = useRef(null);
   const processingRef = useRef(false); // Mutex to prevent flooding the server
+  // Disable automatic captures to avoid saving photos / clogging camera roll
+  const CAPTURE_ENABLED = false;
 
   // REPLACE WITH YOUR COMPUTER'S LOCAL IP ADDRESS (e.g., 192.168.1.5)
   const SERVER_URL = "ws://172.26.50.62:8000/ws/analyze"; 
@@ -26,10 +28,13 @@ export default function App() {
 
     setWs(socket);
 
-    // 2. Start Frame Loop (Every 100ms = 10 FPS)
-    const interval = setInterval(() => {
+    // 2. Start Frame Loop (Every 150ms) - disabled by default
+    let interval = null;
+    if (CAPTURE_ENABLED) {
+      interval = setInterval(() => {
         captureAndSend();
-    }, 150); 
+      }, 150);
+    }
 
     return () => {
       socket.close();
@@ -38,6 +43,7 @@ export default function App() {
   }, []);
 
   const captureAndSend = async () => {
+    if (!CAPTURE_ENABLED) return; // capturing disabled
     if (!cameraRef.current || processingRef.current) return;
 
     processingRef.current = true; // Lock
@@ -78,15 +84,9 @@ export default function App() {
         
         {/* OVERLAY UI */}
         <View style={styles.overlay}>
-          {/* Top Bar: Financials */}
-          <View style={styles.topBar}>
-            <Text style={styles.coinText}>💰 Staked: 50 Credits</Text>
-          </View>
-
           {/* Center: Angle & Feedback */}
           <View style={styles.centerFeedback}>
-            <Text style={styles.largeText}>{feedback.feedback}</Text>
-            <Text style={styles.subText}>Angle: {feedback.angle}°</Text>
+              <Text style={styles.subText}>Angle: {feedback.angle}°</Text>
           </View>
 
           {/* Bottom: Rep Counter */}
