@@ -3,98 +3,95 @@ import time
 
 class LifterState:
     def __init__(self):
-        self.state = "IDLE"  # Options: IDLE, DESCENDING, BOTTOM, ASCENDING, TOP
+        self.state = "IDLE" 
         self.reps = 0
         self.velocity = 0.0
         
-        # History for smoothing
         self.prev_y = None
         self.prev_time = None
         self.velocity_history = []
         
-        self.concentric_samples = []
-        self.last_rep_velocity = 0.0
+        # NEW: Track the fastest point of the current rep
+        self.peak_velocity = 0.0
 
-        self.start_y_position = None    # To track Range of Motion (ROM)
-
-    def update(self, keypoints):
+    def update(self, current_y):
         """
-        updates state based on wrist vertical position.
-        Coordinate System: Y=0 is TOP. Moving UP decreases Y.
+        Calculates velocity from Y-coordinate changes.
         """
-        # 1. Get average Y position of available wrists
-        ys = []
-        if 'wrist_l' in keypoints:
-            ys.append(keypoints['wrist_l'][1])
-        if 'wrist_r' in keypoints:
-            ys.append(keypoints['wrist_r'][1])
-        
-        if not ys:
-            return None
-
-        current_y = np.mean(ys)
+        # 1. Handle First Frame
         current_time = time.time()
-
-        # Initialize if first frame
         if self.prev_y is None:
             self.prev_y = current_y
             self.prev_time = current_time
-            self.start_y_position = current_y
             return None
 
-        # 2. Calculate Velocity (Pixels per second)
-        # Note: Inverted sign because Y decreases as you go UP
+        # 2. Calculate Time Delta (dt)
         dt = current_time - self.prev_time
         if dt == 0: 
-            return None
+            return None 
+        
+        # 3. Calculate Raw Velocity
         dy = current_y - self.prev_y
-        if dt > 0:
-            inst_vel = dy / dt
-            self.velocity_history.append(inst_vel)
-            if len(self.velocity_history) > 3: self.velocity_history.pop(0)
-            self.velocity = np.mean(self.velocity_history)
+        raw_velocity = -(dy / dt) 
+
+        # 4. Smoothing
+        self.velocity_history.append(raw_velocity)
+        if len(self.velocity_history) > 5: 
+            self.velocity_history.pop(0)
         
-        display_velocity = self.velocity / 500.0
+        avg_pixel_velocity = np.mean(self.velocity_history)
 
-        # 3. State Machine Logic
+        # 5. Normalization
+        self.velocity = avg_pixel_velocity / 500.0
+
+        # 6. State Machine
+        THRESHOLD = 0.02 
         
-        # DETECT DESCENDING (Eccentric)
-        # We need significant negative velocity
-        if display_velocity < -0.05: 
-            if self.state != "DESCENDING":
-                self.state = "DESCENDING"
-                # Track where the rep started (the top)
-                self.start_y_position = current_y 
+        # Variable to store the velocity of the rep we JUST finished
+        finished_rep_velocity = 0.0
 
-        # DETECT ASCENDING (Concentric)
-        # We need significant positive velocity
-        elif display_velocity > 0.05:
-            if self.state != "ASCENDING":
-                self.state = "ASCENDING"
-
-        # DETECT END OF REP (Top/Lockout)
-        # If we were ascending, and now velocity is near zero
-        elif abs(display_velocity) < 0.05:
+        # --- CASE 1: MOVING DOWN (Eccentric) ---
+        if self.velocity < -THRESHOLD: 
+            # If we were just going UP, and now we are going DOWN -> Rep Count
             if self.state == "ASCENDING":
-                # Check Range of Motion (ROM) to prevent jitter counting
-                # Did we move enough from the bottom?
-                # (Simple check: Just count it for now to fix your bug)
                 self.reps += 1
+                # SAVE THE PEAK we saw during the lift
+                finished_rep_velocity = self.peak_velocity
+                # Reset peak for next rep
+                self.peak_velocity = 0.0
+            
+            self.state = "DESCENDING"
+
+        # --- CASE 2: MOVING UP (Concentric) ---
+        elif self.velocity > THRESHOLD:
+            self.state = "ASCENDING"
+            # TRACK PEAK VELOCITY
+            if self.velocity > self.peak_velocity:
+                self.peak_velocity = self.velocity
+
+        # --- CASE 3: HOLDING STILL (Top or Bottom) ---
+        else:
+            if self.state == "ASCENDING":
+                self.reps += 1
+                finished_rep_velocity = self.peak_velocity
+                self.peak_velocity = 0.0
                 self.state = "TOP"
-                if self.concentric_samples:
-                    self.last_rep_velocity = 0.0
             elif self.state == "DESCENDING":
                 self.state = "BOTTOM"
             else:
                 self.state = "IDLE"
 
-        # 4. Update History
+        # 7. Update History
         self.prev_y = current_y
         self.prev_time = current_time
 
         return {
             "state": self.state,
             "reps": self.reps,
-            "current_velocity": float(display_velocity),
-            "rep_velocity": float(self.last_rep_velocity)
+            "velocity": float(self.velocity) * 10,       
+            "current_velocity": float(self.velocity) * 10,
+            
+            # CRITICAL FIX: Return the PEAK velocity of the finished rep
+            # If we didn't finish a rep this frame, return the current peak
+            "rep_velocity": float(finished_rep_velocity if finished_rep_velocity > 0 else self.peak_velocity) * 10 
         }
