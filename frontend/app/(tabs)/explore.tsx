@@ -1,112 +1,108 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { StyleSheet, View, Dimensions, TouchableOpacity } from 'react-native';
+import Animated, { FadeInDown, FadeInRight } from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient'; 
+import { useRouter } from 'expo-router'; // To link to your camera view
 
-import { Collapsible } from '@/components/ui/collapsible';
-import { ExternalLink } from '@/components/external-link';
 import ParallaxScrollView from '@/components/parallax-scroll-view';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Fonts } from '@/constants/theme';
+
+const { width } = Dimensions.get('window');
+
+const FEATURES = [
+  { id: 1, title: 'AI Form Analysis', description: 'Real-time biomechanics tracking to ensure safety.', icon: 'eye.fill', color: '#007AFF', delay: 100 },
+  { id: 2, title: 'Velocity Tracking', description: 'Measure bar speed to accurately gauge RIR.', icon: 'speedometer', color: '#4CD964', delay: 200 },
+  { id: 3, title: 'Proof of Sweat', description: 'Cryptographically verify your workouts.', icon: 'lock.shield.fill', color: '#FFD700', delay: 300 },
+  { id: 4, title: 'Privacy Shield', description: 'On-device processing with background blurring.', icon: 'hand.raised.fill', color: '#FF3B30', delay: 400 },
+];
 
 export default function TabTwoScreen() {
+  const router = useRouter();
+
   return (
     <ParallaxScrollView
-      headerBackgroundColor={{ light: '#D0D0D0', dark: '#353636' }}
+      headerBackgroundColor={{ light: '#1A1A1A', dark: '#000' }}
       headerImage={
-        <IconSymbol
-          size={310}
-          color="#808080"
-          name="chevron.left.forwardslash.chevron.right"
-          style={styles.headerImage}
-        />
+        <IconSymbol size={300} color="#222" name="waveform.path.ecg" style={styles.headerImage} />
       }>
+      
       <ThemedView style={styles.titleContainer}>
-        <ThemedText
-          type="title"
-          style={{
-            fontFamily: Fonts.rounded,
-          }}>
-          Explore
-        </ThemedText>
+        <Animated.View entering={FadeInDown.duration(600).springify()}>
+          <ThemedText type="title" style={styles.mainTitle}>Vantage</ThemedText>
+          <ThemedText style={styles.subtitle}>The Future of Hypertrophy</ThemedText>
+        </Animated.View>
       </ThemedView>
-      <ThemedText>This app includes example code to help you get started.</ThemedText>
-      <Collapsible title="File-based routing">
-        <ThemedText>
-          This app has two screens:{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/explore.tsx</ThemedText>
-        </ThemedText>
-        <ThemedText>
-          The layout file in <ThemedText type="defaultSemiBold">app/(tabs)/_layout.tsx</ThemedText>{' '}
-          sets up the tab navigator.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/router/introduction">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Android, iOS, and web support">
-        <ThemedText>
-          You can open this project on Android, iOS, and the web. To open the web version, press{' '}
-          <ThemedText type="defaultSemiBold">w</ThemedText> in the terminal running this project.
-        </ThemedText>
-      </Collapsible>
-      <Collapsible title="Images">
-        <ThemedText>
-          For static images, you can use the <ThemedText type="defaultSemiBold">@2x</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">@3x</ThemedText> suffixes to provide files for
-          different screen densities
-        </ThemedText>
-        <Image
-          source={require('@/assets/images/react-logo.png')}
-          style={{ width: 100, height: 100, alignSelf: 'center' }}
-        />
-        <ExternalLink href="https://reactnative.dev/docs/images">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Light and dark mode components">
-        <ThemedText>
-          This template has light and dark mode support. The{' '}
-          <ThemedText type="defaultSemiBold">useColorScheme()</ThemedText> hook lets you inspect
-          what the user&apos;s current color scheme is, and so you can adjust UI colors accordingly.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/develop/user-interface/color-themes/">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Animations">
-        <ThemedText>
-          This template includes an example of an animated component. The{' '}
-          <ThemedText type="defaultSemiBold">components/HelloWave.tsx</ThemedText> component uses
-          the powerful{' '}
-          <ThemedText type="defaultSemiBold" style={{ fontFamily: Fonts.mono }}>
-            react-native-reanimated
-          </ThemedText>{' '}
-          library to create a waving hand animation.
-        </ThemedText>
-        {Platform.select({
-          ios: (
-            <ThemedText>
-              The <ThemedText type="defaultSemiBold">components/ParallaxScrollView.tsx</ThemedText>{' '}
-              component provides a parallax effect for the header image.
-            </ThemedText>
-          ),
-        })}
-      </Collapsible>
+
+      <View style={styles.featuresContainer}>
+        {FEATURES.map((feature) => (
+          <Animated.View key={feature.id} entering={FadeInRight.delay(feature.delay)} style={styles.cardWrapper}>
+            <LinearGradient
+              colors={['#2C2C2E', '#141414']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0.5 }}
+              style={styles.card}
+            >
+              <View style={[styles.iconBox, { backgroundColor: `${feature.color}15` }]}>
+                <IconSymbol size={28} name={feature.icon as any} color={feature.color} />
+              </View>
+              <View style={styles.textContainer}>
+                <ThemedText type="subtitle" style={styles.cardTitle}>{feature.title}</ThemedText>
+                <ThemedText style={styles.cardDesc}>{feature.description}</ThemedText>
+              </View>
+            </LinearGradient>
+          </Animated.View>
+        ))}
+      </View>
+
+      {/* Modern Gradient Button */}
+      <Animated.View entering={FadeInDown.delay(600)} style={styles.footer}>
+        <TouchableOpacity onPress={() => router.push('/')}>
+            <LinearGradient
+                colors={['#007AFF', '#0055BB']}
+                style={styles.ctaButton}
+            >
+                <ThemedText style={styles.ctaText}>Start Your Session</ThemedText>
+                <IconSymbol name="arrow.right" size={20} color="white" />
+            </LinearGradient>
+        </TouchableOpacity>
+      </Animated.View>
+
     </ParallaxScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  headerImage: {
-    color: '#808080',
-    bottom: -90,
-    left: -35,
-    position: 'absolute',
-  },
-  titleContainer: {
+  headerImage: { color: '#111', bottom: -50, left: -30, position: 'absolute' },
+  titleContainer: { marginBottom: 10, paddingHorizontal: 10 },
+  mainTitle: { fontSize: 30, fontWeight: '800', letterSpacing: -1 },
+  subtitle: { fontSize: 18, color: '#888', marginTop: 4 },
+  featuresContainer: { gap: 16, paddingBottom: 20 },
+  cardWrapper: { borderRadius: 20, overflow: 'hidden' },
+  card: {
     flexDirection: 'row',
-    gap: 8,
+    padding: 20,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#333',
+    borderRadius: 20,
   },
+  iconBox: { width: 54, height: 54, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginRight: 16 },
+  textContainer: { flex: 1 },
+  cardTitle: { fontSize: 17, fontWeight: '700', color: '#fff', marginBottom: 2 },
+  cardDesc: { fontSize: 13, color: '#999', lineHeight: 18 },
+  footer: { marginTop: 30, alignItems: 'center', paddingBottom: 50 },
+  ctaButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 32,
+    borderRadius: 30,
+    gap: 10,
+    shadowColor: '#007AFF',
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  ctaText: { color: 'white', fontSize: 18, fontWeight: '700' },
 });
