@@ -114,7 +114,7 @@ export default function App() {
   const startSet = (type) => {
     setExercise(type);
     setRepHistory([]);
-    setFeedback({ state: "Searching", reps: 0, velocity: 0, rir: 5, feedback: "Ready", keypoints: null});
+    setFeedback({ state: "Searching", reps: 0, velocity: 0, rir: 5, feedback: "Looking for lifter...", keypoints: null});
     setIsRecording(true);
     setShowSummary(false);
   };
@@ -220,7 +220,7 @@ export default function App() {
       <CameraView 
         style={StyleSheet.absoluteFillObject} 
         ref={cameraRef} 
-        facing="back"
+        facing="front"
         onCameraReady={() => setIsCameraReady(true)}
       />
       

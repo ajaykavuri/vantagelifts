@@ -33,7 +33,7 @@ class SessionManager:
         if len(self.rep_velocities) < 2:
             return 5
         
-        first_rep_vel = self.rep_veloities[0]
+        first_rep_vel = self.rep_velocities[0]
         last_rep_vel = self.rep_velocities[-1]
 
         # Velocity Loss % = (First - Last) / First
@@ -44,7 +44,7 @@ class SessionManager:
         if loss > 0.2: return 2
         return 4 # Still moving fast
 
-session = SessionManager
+session = SessionManager()
 
 def clean_for_json(data):
     """Recursively converts NumPy types to native Python types."""
@@ -66,7 +66,6 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     print(">>> CLIENT CONNECTED: New Session Started")
     
-    lifter = LifterState()
     session.reset("curl")
     try:
         while True:
@@ -157,7 +156,7 @@ async def websocket_endpoint(websocket: WebSocket):
                                     raw_response["rir"] = session.calculate_rir()
 
                                     state = stats['state']
-                                    
+
                                     if state == "DESCENDING": raw_response['feedback'] = "Control Negative"
                                     elif state == "ASCENDING": raw_response['feedback'] = "EXPLODE UP!"
                                     elif state == "TOP": raw_response['feedback'] = "Lockout"
