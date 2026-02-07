@@ -2,6 +2,7 @@ import cv2
 import base64
 import numpy as np
 import uvicorn
+import time
 import json
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from ultralytics import YOLO
@@ -11,6 +12,39 @@ app = FastAPI()
 
 # 1. Load YOLOv11 Pose Model
 model = YOLO('yolo11n-pose.pt')
+
+class SessionManager:
+    def __init__(self):
+        self.lifter = LifterState()
+        self.rep_velocities = []
+        self.current_rep_peak_vel = 0
+        self.last_reps = 0
+        self.exercise_type = "curl" # default
+
+    def reset(self, exercise_type):
+        self.lifter = LifterState()
+        self.rep_velocities = []
+        self.current_rep_peak_vel = 0
+        self.last_reps = 0
+        self.exercise_type = exercise_type
+    
+    def calculate_rir(self):
+        """Estimate Reps in Reserve based on Velocity Loss"""
+        if len(self.rep_velocities) < 2:
+            return 5
+        
+        first_rep_vel = self.rep_veloities[0]
+        last_rep_vel = self.rep_velocities[-1]
+
+        # Velocity Loss % = (First - Last) / First
+        loss = (first_rep_vel - last_rep_vel) / first_rep_vel
+
+        if loss > 0.4: return 0  # Failed or Grinding
+        if loss > 0.3: return 1
+        if loss > 0.2: return 2
+        return 4 # Still moving fast
+
+session = SessionManager
 
 def clean_for_json(data):
     """Recursively converts NumPy types to native Python types."""
@@ -33,16 +67,24 @@ async def websocket_endpoint(websocket: WebSocket):
     print(">>> CLIENT CONNECTED: New Session Started")
     
     lifter = LifterState()
-    
+    session.reset("curl")
     try:
         while True:
             try:
                 data = await websocket.receive_text()
+                payload = json.loads(data)
+                image_data = payload.get("image")
+
+                # check if user requested reset or new set
+                client_exercise = payload.get("exercise", "curl")
+                if (client_exercise != session.exercise_type):
+                    print(f"Switching to {client_exercise}")
+                    session.reset(client_exercise)
             except Exception:
                 break
             
             try:
-                image_bytes = base64.b64decode(data)
+                image_bytes = base64.b64decode(image_data)
                 np_arr = np.frombuffer(image_bytes, np.uint8)
                 frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
             except Exception as e:
@@ -60,8 +102,9 @@ async def websocket_endpoint(websocket: WebSocket):
             
             raw_response = {
                 "state": "Searching",
-                "reps": lifter.reps if hasattr(lifter, 'reps') else 0,
+                "reps": session.last_reps,
                 "velocity": 0.0,
+                "rir": session.calculate_rir(),
                 "feedback": "Looking for lifter...",
                 "keypoints": None 
             }
@@ -90,16 +133,31 @@ async def websocket_endpoint(websocket: WebSocket):
                         raw_response['keypoints'] = overlay_data
 
                         # --- BIOMECHANICS ---
-                        keypoints_dict = {}
-                        if conf[9] > 0.3: keypoints_dict['wrist_l'] = kpts[9]
-                        if conf[10] > 0.3: keypoints_dict['wrist_r'] = kpts[10]
+                        mech_kpts = {}
+                        if conf[9] > 0.3: mech_kpts['wrist_l'] = kpts[9]
+                        if conf[10] > 0.3: mech_kpts['wrist_r'] = kpts[10]
 
-                        if keypoints_dict:
+                        if mech_kpts:
                             try:
-                                mechanics_feedback = lifter.update(keypoints_dict)
-                                if mechanics_feedback:
-                                    raw_response.update(mechanics_feedback)
-                                    state = raw_response.get('state', 'IDLE')
+                                stats = session.lifter.update(mech_kpts)
+                                if stats:
+                                    raw_response['state'] = stats['state']
+                                    raw_response['reps'] = stats['reps']
+                                    raw_response['velocity'] = stats['velocity']
+
+                                    if stats['state'] == "ASCENDING":
+                                        session.current_rep_peak_vel = max(session.current_rep_peak_vel, stats['velocity'])
+                                    
+                                    if stats['reps'] > session.last_reps:
+                                        if session.current_rep_peak_vel > 0:
+                                            session.rep_velocities.append(session.current_rep_peak_vel)
+                                        session.last_reps = stats['reps']
+                                        session.current_rep_peak_vel = 0 # reset for next rep
+                                    
+                                    raw_response["rir"] = session.calculate_rir()
+
+                                    state = stats['state']
+                                    
                                     if state == "DESCENDING": raw_response['feedback'] = "Control Negative"
                                     elif state == "ASCENDING": raw_response['feedback'] = "EXPLODE UP!"
                                     elif state == "TOP": raw_response['feedback'] = "Lockout"

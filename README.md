@@ -1,4 +1,4 @@
-# Vantage ⚡️ Proof of Sweat Protocol
+# Vantage Lifts ⚡️ Proof of Sweat Protocol
 
 > **Targeting the Polychrome Mosaic Track at TartanHacks 2026** > *Bridging Preventative Healthcare & Decentralized Finance through Computer Vision.*
 
