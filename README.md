@@ -1,13 +1,12 @@
 # Vantage ⚡️ Proof of Sweat Protocol
 
-> **Winner of the Polychrome Mosaic Track (Target)** > *Bridging Preventative Healthcare & Decentralized Finance through Computer Vision.*
+> **Targeting the Polychrome Mosaic Track at TartanHacks 2026** > *Bridging Preventative Healthcare & Decentralized Finance through Computer Vision.*
 
 ## 🚀 The Elevator Pitch
 **Vantage** is the world's first **"Proof of Sweat"** ecosystem. While traditional fitness apps rely on manual (and easily faked) inputs, Vantage uses real-time **Computer Vision** and **Velocity Loss Tracking (VLT)** to cryptographically verify physical exertion.
 
 By turning biomechanical data into a verifiable asset, we unlock a new layer of "Active Finance":
 * **For Users:** Stake credits on your own workout performance.
-* **For Insurers:** "Pay-as-you-lift" premiums based on verified mobility and form safety.
 * **For Health:** AI-driven form correction that prevents injury before it happens.
 
 ---
@@ -15,13 +14,13 @@ By turning biomechanical data into a verifiable asset, we unlock a new layer of 
 ## 🛠 The Tech Stack
 * **Frontend:** React Native (Expo)
 * **Backend:** Python (FastAPI + WebSockets)
-* **AI Engine:** YOLOv11 (Pose Estimation via Ultralytics)
+* **AI Engine:** YOLOv11n-pose (Pose Estimation via Ultralytics)
 * **Real-time Protocol:** JSON over WebSockets (Avg latency < 100ms)
 
 ---
 
 ## 📸 How to Run the Demo (Local Setup)
-*Since this is a hackathon project, the backend runs locally on your laptop and streams data to your phone via local WiFi.*
+*For the MVP, the backend runs locally on your laptop and streams data to your phone via local WiFi.*
 
 ### Prerequisites
 1.  **Node.js** & **npm**
@@ -53,7 +52,7 @@ By turning biomechanical data into a verifiable asset, we unlock a new layer of 
     ```
 
 ### Step 2: Connect the Frontend (React Native)
-1.  Open `frontend/app/index.tsx` (or `App.js`).
+1.  Open `frontend/app/index.js`.
 2.  Find the line defining `SERVER_URL`:
     ```javascript
     // REPLACE THIS with the IP you found in Step 1
@@ -65,20 +64,32 @@ By turning biomechanical data into a verifiable asset, we unlock a new layer of 
     ```
 4.  Install dependencies:
     ```bash
-    npm install
+    npx expo install expo-camera expo-gl
     ```
 5.  Start the Expo server:
     ```bash
     npx expo start
     ```
 
-### Step 3: The Moment of Truth
+### Step 3: Start Pumping Iron!
 1.  Scan the QR code displayed in your terminal with your phone (or the Expo Go app).
 2.  **Grant Camera Permissions** when prompted.
 3.  Point your camera at a teammate doing a bicep curl or squat.
 4.  Watch the **Angle**, **Rep Count**, and **Wager** update in real-time!
 
 ---
+## 🛡️ Privacy by Design
+Vantage is built on the principle that your biometric data belongs to you alone. We use a Privacy-First architecture to ensure your workout remains secure and anonymous.
+
+* **Edge AI (On-Device Processing)**: 100% of the AI pose estimation happens locally on your smartphone. Your camera feed is never uploaded to the cloud or stored on a server.
+
+* **Zero-Recording Policy**: The app does not record or save raw video. It interprets motion as a mathematical stream of $(x, y, z)$ coordinates and discards visual data in real-time.
+
+* **The "Bystander Shield"**: To respect the privacy of others in the gym, Vantage uses semantic segmentation to apply a real-time blur to the background, ensuring only the primary user is visible to the AI.
+
+* **AR Skeletal Masking**: Instead of video, the app projects an Augmented Reality "stick figure" over your form. You interact with biomechanical data, not sensitive footage.
+
+* **Data Sovereignty**: All "Workout Scores" are stored in a secure local vault. Data is only shared with friends or for "Proof of Sweat" wagering when you explicitly authorize it to share the info with your friends.
 
 ## ⚠️ Troubleshooting
 * **"Network Request Failed" / No Connection:**
@@ -98,4 +109,4 @@ By turning biomechanical data into a verifiable asset, we unlock a new layer of 
 
 ---
 
-*Built with 💻 and ☕️ for the Hackathon 2026.*
+*Built with 💻 and ☕️ for TartanHacks 2026.*
