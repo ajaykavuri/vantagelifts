@@ -6,6 +6,9 @@ __pycache__/
 # C extensions
 *.so
 
+# Random weird file that showed up
+.DS_Store
+
 # Distribution / packaging
 .Python
 build/
