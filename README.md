@@ -14,7 +14,7 @@ By turning biomechanical data into a verifiable asset, we unlock a new layer of 
 ## 🛠 The Tech Stack
 * **Frontend:** React Native (Expo)
 * **Backend:** Python (FastAPI + WebSockets)
-* **AI Engine:** YOLOv11n-pose (Pose Estimation via Ultralytics)
+* **AI Engine:** YOLOv26n-pose (Pose Estimation via Ultralytics)
 * **Real-time Protocol:** JSON over WebSockets (Avg latency < 100ms)
 
 ---
